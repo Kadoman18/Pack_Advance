@@ -18,6 +18,11 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 
 
+# ---------- Global Variables ----------
+
+MAJOR: int = 1
+MINOR: int = 2
+
 # ---------- Dataclass Models ----------
 
 @dataclass
@@ -38,31 +43,31 @@ class Dependency:
 
 @dataclass
 class ModuleBase:
-        type: str
-        uuid: str
-        version: list[int]
+        type: str | None = None
+        uuid: str | None = None
+        version: list[int] | None = None
         description: Optional[str] = None
 
 
 @dataclass
 class ResourceModule(ModuleBase):
-        type: str = field(init=False, default="resources")
+        type: str | None = None
 
 
 @dataclass
 class ClientDataModule(ModuleBase):
-        type: str = field(init=False, default="client_data")
+        type: str | None = None
 
 
 @dataclass
 class DataModule(ModuleBase):
-        type: str = field(init=False, default="data")
+        type: str | None = None
 
 
 @dataclass
 class ScriptModule(ModuleBase):
-        type: str = field(init=False, default="script")
-        language: str = "javascript"
+        type: str | None = None
+        language: str | None = None
         entry: Optional[str] = None
 
 
@@ -97,6 +102,10 @@ class ManifestLoader:
                 self.behavior_pack: Optional[BehaviorPack] = None
                 self.resource_pack: Optional[ResourcePack] = None
 
+                self.behavior_path: Optional[Path] = None
+                self.resource_path: Optional[Path] = None
+
+
 
         def scan(self) -> None:
                 for manifest_path in self.root.rglob("manifest.json"):
@@ -115,9 +124,12 @@ class ManifestLoader:
                 for module in modules:
                         if module.get("type") == "data":
                                 self.behavior_pack = self._load_behavior(data)
+                                self.behavior_path = path
                                 return
+
                         if module.get("type") in ("resources", "client_data"):
                                 self.resource_pack = self._load_resource(data)
+                                self.resource_path = path
                                 return
 
 
@@ -150,12 +162,14 @@ class ManifestLoader:
                 for module in data.get("modules", []):
                         if module["type"] == "data":
                                 modules.append(DataModule(
+                                        type=module["type"],
                                         uuid=module["uuid"],
                                         version=module["version"],
                                         description=module.get("description")
                                 ))
                         elif module["type"] == "script":
                                 modules.append(ScriptModule(
+                                        type=module["type"],
                                         uuid=module["uuid"],
                                         version=module["version"],
                                         description=module.get("description"),
@@ -178,12 +192,14 @@ class ManifestLoader:
                 for module in data.get("modules", []):
                         if module["type"] == "resources":
                                 modules.append(ResourceModule(
+                                        type=module["type"],
                                         uuid=module["uuid"],
                                         version=module["version"],
                                         description=module.get("description")
                                 ))
                         elif module["type"] == "client_data":
                                 modules.append(ClientDataModule(
+                                        type=module["type"],
                                         uuid=module["uuid"],
                                         version=module["version"],
                                         description=module.get("description")
@@ -237,126 +253,161 @@ class LoaderApp(tk.Tk):
                         messagebox.showerror("Error", "No Resource pack or Behavior pack loaded.")
                         return
 
-                ModifyManifests(self.loader.resource_pack, self.loader.behavior_pack)
+                ModifyManifests(
+                        self,
+                        self.loader.resource_pack,
+                        self.loader.behavior_pack,
+                        self.loader
+                )
 
 
 class ModifyManifests(tk.Toplevel):
 
-        def __init__(self, rp_data: ResourcePack | None, bp_data: BehaviorPack | None) -> None:
-
-                super().__init__()
+        def __init__(
+                self,
+                parent: tk.Misc,
+                rp: ResourcePack | None,
+                bp: BehaviorPack | None,
+                loader: ManifestLoader
+        ) -> None:
+                super().__init__(parent)
+                self.loader = loader
                 self.geometry("800x500")
 
-                if rp_data and bp_data:
-                        self.title("Modify Manifests")
-                        self.rp_name = tk.Label(self, text=f'Resource Pack: {rp_data.header.name}')
-                        self.rp_advance_minor_button = tk.Button(self, text='Advance Minor Version', command=lambda: self._advance_resource_pack_minor(rp_data, bp_data))
-                        self.rp_advance_major_button = tk.Button(self, text='Advance Major Version', command=lambda: self._advance_resource_pack_major(rp_data, bp_data))
-                        self.bp_name = tk.Label(self, text=f'Behavior Pack: {bp_data.header.name}')
-                        self.bp_advance_minor_button = tk.Button(self, text='Advance Minor Version', command=lambda: self._advance_behavior_pack_minor(rp_data, bp_data))
-                        self.bp_advance_major_button = tk.Button(self, text='Advance Major Version', command=lambda: self._advance_behavior_pack_major(rp_data, bp_data))
-                        self.rp_name.pack()
-                        self.rp_advance_minor_button.pack()
-                        self.rp_advance_major_button.pack()
-                        self.bp_name.pack()
-                        self.bp_advance_minor_button.pack()
-                        self.bp_advance_major_button.pack()
-
-                elif rp_data and not bp_data:
-                        self.title("Modify Manifest")
-                        self.rp_name = tk.Label(self, text=f'Resource Pack: {rp_data.header.name}')
-                        self.rp_advance_minor_button = tk.Button(self, text='Advance Minor Version', command=lambda: self._advance_resource_pack_minor(rp_data, bp_data))
-                        self.rp_advance_major_button = tk.Button(self, text='Advance Major Version', command=lambda: self._advance_resource_pack_major(rp_data, bp_data))
-                        self.rp_name.pack()
-                        self.rp_advance_minor_button.pack()
-                        self.rp_advance_major_button.pack()
-
-                elif not rp_data and bp_data:
-                        self.title("Modify Manifest")
-                        self.bp_name = tk.Label(self, text=f'Behavior Pack: {bp_data.header.name}')
-                        self.bp_advance_minor_button = tk.Button(self, text='Advance Minor Version', command=lambda: self._advance_behavior_pack_minor(rp_data, bp_data))
-                        self.bp_advance_major_button = tk.Button(self, text='Advance Major Version', command=lambda: self._advance_behavior_pack_major(rp_data, bp_data))
-                        self.bp_name.pack()
-                        self.bp_advance_minor_button.pack()
-                        self.bp_advance_major_button.pack()
-
-
-        def _advance_resource_pack_minor(self, rp: ResourcePack | None, bp: BehaviorPack | None) -> None:
-                if not rp:
+                if not rp and not bp:
+                        self.destroy()
                         return
-                uuid = rp.header.uuid
-                rp.header.version[2] += 1
-                print(rp.header.version)
-                for module in rp.modules:
-                        if module.uuid == uuid:
-                                module.version[1] += 1
-                                print(module.version)
-                if not bp or not bp.dependencies or not rp.dependencies:
-                        return
-                for dependency in bp.dependencies:
-                        if dependency.uuid == uuid and type(dependency.version) == list[str]:
-                                dependency.version[2] += 1
-                                print(dependency.version)
+
+                self.title("Modify Manifest" if not (rp and bp) else "Modify Manifests")
+
+                if rp:
+                        self._add_pack_controls(
+                                f"Resource Pack: {rp.header.name}",
+                                rp,
+                                bp
+                        )
+
+                if bp:
+                        self._add_pack_controls(
+                                f"Behavior Pack: {bp.header.name}",
+                                bp,
+                                rp
+                        )
+
+                self.status_var = tk.StringVar()
+                self.status_label = tk.Label(self, textvariable=self.status_var, fg="green")
+                self.status_label.pack(side="bottom", pady=8)
+
+                tk.Button(self, text="Save Manifests", command=self._confirm_save).pack(pady=12)
 
 
-        def _advance_resource_pack_major(self, rp: ResourcePack | None, bp: BehaviorPack | None) -> None:
-                if not rp:
-                        return
-                uuid = rp.header.uuid
-                rp.header.version[1] += 1
-                rp.header.version[2] = 0
-                print(rp.header.version)
-                for module in rp.modules:
-                        if module.uuid == uuid:
-                                module.version[1] += 1
-                                module.version[2] = 0
-                                print(module.version)
-                if not bp or not bp.dependencies or not rp.dependencies:
-                        return
-                for dependency in bp.dependencies:
-                        if dependency.uuid == uuid and type(dependency.version) == list[str]:
-                                dependency.version[1] += 1
-                                dependency.version[2] = 0
-                                print(dependency.version)
 
 
-        def _advance_behavior_pack_minor(self, rp: ResourcePack | None, bp: BehaviorPack | None) -> None:
-                if not bp:
-                        return
-                uuid = bp.header.uuid
-                bp.header.version[2] += 1
-                print(bp.header.version)
-                for module in bp.modules:
-                        if module.uuid == uuid:
-                                module.version[1] += 1
-                                print(module.version)
-                if not rp or not rp.dependencies or not bp.dependencies:
-                        return
-                for dependency in rp.dependencies:
-                        if dependency.uuid == uuid and type(dependency.version) == list[str]:
-                                dependency.version[2] += 1
-                                print(dependency.version)
+        def _add_pack_controls(
+                self,
+                label: str,
+                source: ResourcePack | BehaviorPack,
+                target: ResourcePack | BehaviorPack | None
+        ) -> None:
+                tk.Label(self, text=label, pady=10).pack()
+
+                tk.Button(
+                        self,
+                        text="Advance Minor Version",
+                        command=lambda: self._advance_pack(source, target, MINOR)
+                ).pack()
+
+                tk.Button(
+                        self,
+                        text="Advance Major Version",
+                        command=lambda: self._advance_pack(source, target, MAJOR)
+                ).pack()
 
 
-        def _advance_behavior_pack_major(self, rp: ResourcePack | None, bp: BehaviorPack | None) -> None:
-                if not bp:
+        def _advance_version(self, version: list[int], level: int) -> None:
+                version[level] += 1
+                if level == 1:
+                        version[2] = 0
+
+
+        def _advance_pack(
+                self,
+                source_pack: ResourcePack | BehaviorPack,
+                target_pack: ResourcePack | BehaviorPack | None,
+                level: int
+        ) -> None:
+                uuid = source_pack.header.uuid
+
+                self._advance_version(source_pack.header.version, level)
+
+                for module in source_pack.modules:
+                        if module.type == ("data" or "resources") and module.version:
+                                self._advance_version(module.version, level)
+
+                if target_pack and target_pack.dependencies:
+                        for dependency in target_pack.dependencies:
+                                if dependency.uuid == uuid and isinstance(dependency.version, list):
+                                        self._advance_version(dependency.version, level)
+
+                pack_name = source_pack.header.name
+                version = ".".join(map(str, source_pack.header.version))
+                level_name = "Major" if level == MAJOR else "Minor"
+
+                self._show_status(
+                        f"{pack_name} {level_name} version advanced to {version}"
+                )
+
+
+        def _show_status(self, message: str, duration_ms: int = 3000) -> None:
+                self.status_var.set(message)
+                self.after(duration_ms, lambda: self.status_var.set(""))
+
+
+        def _confirm_save(self) -> None:
+                if not messagebox.askyesno(
+                        "Confirm Save",
+                        "Save changes to manifest.json files?"
+                ):
                         return
-                uuid = bp.header.uuid
-                bp.header.version[1] += 1
-                bp.header.version[2] = 0
-                print(bp.header.version)
-                for module in bp.modules:
-                        if module.uuid == uuid:
-                                module.version[1] += 1
-                                module.version[2] = 0
-                                print(module.version)
-                if not rp or not rp.dependencies or not bp.dependencies:
-                        return
-                for dependency in rp.dependencies:
-                        if dependency.uuid == uuid and type(dependency.version) == list[str]:
-                                dependency.version[1] += 1
-                                dependency.version[2] = 0
-                                print(dependency.version)
+
+                loader = self.loader
+
+                if loader.resource_pack and loader.resource_path:
+                        self._write_manifest(loader.resource_pack, loader.resource_path)
+
+                if loader.behavior_pack and loader.behavior_path:
+                        self._write_manifest(loader.behavior_pack, loader.behavior_path)
+
+                self._show_status("Manifests saved successfully")
+
+
+        def _strip_none(self, obj: dict) -> dict:
+                return {k: v for k, v in obj.items() if v is not None}
+
+
+        def _write_manifest(self, pack: ResourcePack | BehaviorPack, path: Path) -> None:
+                data: dict = {
+                        "format_version": pack.format_version,
+                        "header": self._strip_none(vars(pack.header)),
+                        "modules": [
+                                self._strip_none(vars(m)) for m in pack.modules
+                        ]
+                }
+
+                if pack.dependencies:
+                        data["dependencies"] = [
+                                self._strip_none(vars(d)) for d in pack.dependencies
+                        ]
+
+                if pack.metadata:
+                        data["metadata"] = pack.metadata
+
+                with path.open("w", encoding="utf-8") as file:
+                        json.dump(data, file, indent=4)
+
+
+
+
 
 
 if __name__ == "__main__":
