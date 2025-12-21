@@ -217,7 +217,7 @@ class ManifestLoader:
 
 class LoaderApp(tk.Tk):
 
-        def __init__(self, *bp: BehaviorPack, **rp: ResourcePack) -> None:
+        def __init__(self) -> None:
 
                 super().__init__()
                 self.title("Bedrock Manifest Loader")
